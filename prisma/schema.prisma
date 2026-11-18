@@ -1,0 +1,288 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Clip {
+  id               String   @id
+  originalFilename String
+  displayName      String
+  storedFilename   String   @unique
+  storagePath      String   @unique
+  thumbnailPath    String?
+  mimeType         String
+  size             Int
+  duration         Float?
+  width            Int?
+  height           Int?
+  codec            String?
+  aspectRatio      String?
+  audioCodec       String?
+  audioChannels    Int?
+  checksum         String
+  activeChecksum   String?  @unique
+  source           String   @default("LOCAL")
+  status           String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  mediaRemovedAt   DateTime?
+  posts            Post[]
+
+  @@index([createdAt])
+}
+
+model PublishingDraft {
+  id              String   @id @default(uuid())
+  name            String
+  step            Int      @default(1)
+  status          String   @default("ACTIVE")
+  scheduleMode    String   @default("NOW")
+  scheduleLocal   String   @default("")
+  intervalMinutes Int      @default(60)
+  timezone        String
+  revision        Int      @default(1)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  posts           Post[]
+  submissionKey   String?  @unique
+
+  @@index([status, updatedAt])
+}
+
+model Post {
+  id          String   @id @default(uuid())
+  draftId     String?
+  draft       PublishingDraft? @relation(fields: [draftId], references: [id], onDelete: SetNull)
+  clipId      String?
+  clip        Clip?    @relation(fields: [clipId], references: [id], onDelete: SetNull)
+  clipKey     String
+  filename    String
+  position    Int
+  content     Json
+  status      String   @default("DRAFT")
+  scheduledAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  targets     PostTarget[]
+
+  @@unique([draftId, clipKey])
+  @@index([clipId, status])
+  @@index([status, scheduledAt])
+}
+
+model PostTarget {
+  id          String   @id @default(uuid())
+  postId      String
+  post        Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  accountId   String
+  account     SocialAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  content     Json
+  status      String   @default("DRAFT")
+  verifiedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  history     PublicationHistory[]
+  job         Job?
+
+  @@unique([postId, accountId])
+  @@index([accountId, status])
+}
+
+model SocialAccount {
+  id            String   @id @default(uuid())
+  platform      String
+  remoteId      String
+  name          String
+  status        String   @default("DISCONNECTED")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  targets       PostTarget[]
+  groups        AccountGroupMember[]
+  analytics     AnalyticsCache[]
+  avatar        String?
+  canPublish    Boolean @default(false)
+  canAnalyze    Boolean @default(false)
+  verifiedAt    DateTime?
+  lastApiAt     DateTime?
+  authIssue     String?
+  credential    OAuthCredential?
+
+  @@unique([platform, remoteId])
+  @@index([platform, status])
+}
+
+model AccountGroup {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  members   AccountGroupMember[]
+}
+
+model AccountGroupMember {
+  groupId   String
+  accountId String
+  group     AccountGroup   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  account   SocialAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, accountId])
+  @@index([accountId])
+}
+
+model PublicationHistory {
+  id            String   @id @default(uuid())
+  targetId      String?
+  target        PostTarget? @relation(fields: [targetId], references: [id], onDelete: SetNull)
+  filename      String
+  title         String
+  platform      String
+  accountName   String
+  remoteAccount String
+  status        String
+  scheduledAt   DateTime?
+  publishedAt   DateTime?
+  remoteMediaId String?
+  remoteUrl     String?
+  checksum      String?
+  errorSummary  String?
+  createdAt     DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([platform, status, publishedAt])
+  @@index([targetId, status])
+}
+
+model AnalyticsCache {
+  accountId String
+  account   SocialAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  key       String
+  data      Json
+  syncedAt  DateTime @default(now())
+  expiresAt DateTime
+
+  @@id([accountId, key])
+  @@index([expiresAt])
+}
+
+model AppSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+model IntegrationConfig {
+  provider     String @id
+  values       Json
+  secrets      String?
+  status       String
+  revision     String
+  validatedAt  DateTime?
+  connectedAt  DateTime?
+  error        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model OAuthCredential {
+  accountId String @id
+  account SocialAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  sealed   String
+  revision String
+  expiresAt DateTime?
+  refreshedAt DateTime?
+  updatedAt DateTime @updatedAt
+}
+
+model OAuthState {
+  hash String @id
+  provider String
+  browserHash String
+  verifier String?
+  reconnectId String?
+  redirectUri String
+  revision String
+  expiresAt DateTime
+  @@index([expiresAt])
+}
+
+model Job {
+  id String @id @default(uuid())
+  targetId String @unique
+  target PostTarget @relation(fields: [targetId], references: [id], onDelete: Restrict)
+  state String
+  dueAt DateTime
+  scheduledAt DateTime?
+  leaseOwner String?
+  nativeSchedule Boolean @default(false)
+  leaseUntil DateTime?
+  attempts Int @default(0)
+  remoteId String?
+  remoteUrl String?
+  checkpoint String?
+  uploadedBytes Int?
+  error String?
+  errorKind String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  history PublishAttempt[]
+  @@index([state, dueAt])
+  @@index([leaseUntil])
+}
+
+model PublishAttempt {
+  id String @id @default(uuid())
+  jobId String
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  number Int
+  outcome String
+  error String?
+  startedAt DateTime @default(now())
+  finishedAt DateTime?
+  @@unique([jobId, number])
+}
+
+model QuotaUsage {
+  key String @id
+  used Int @default(0)
+  expiresAt DateTime
+  @@index([expiresAt])
+}
+
+model WorkerHeartbeat {
+  id String @id
+  seenAt DateTime
+  running Int
+}
+
+model CleanupTask {
+  clipId String @id
+  requestedByPostId String?
+  state String @default("PENDING")
+  dueAt DateTime
+  updatedAt DateTime @updatedAt
+  @@index([state, dueAt])
+}
+
+model ContentTemplate {
+  id        String   @id @default(uuid())
+  name      String
+  kind      String
+  values    Json
+  isDefault Boolean  @default(false)
+  revision  Int      @default(1)
+  updatedAt DateTime @updatedAt
+
+  @@index([kind, isDefault])
+}
+
+model AiSuggestion {
+  key       String   @id
+  content   Json
+  expiresAt DateTime
+
+  @@index([expiresAt])
+}

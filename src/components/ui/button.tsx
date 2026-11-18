@@ -1,0 +1,16 @@
+import { cva, type VariantProps } from "class-variance-authority";
+import type { ComponentProps } from "react";
+import { cn } from "@/lib/utils";
+
+export const buttonVariants = cva("button button-ui", {
+  variants: {
+    variant: { primary: "button-primary", outline: "button-outline", ghost: "button-ghost" },
+    size: { default: "", icon: "button-icon" },
+  },
+  defaultVariants: { variant: "outline", size: "default" },
+});
+
+export function Button({ className, variant, size, type = "button", ...props }:
+  ComponentProps<"button"> & VariantProps<typeof buttonVariants>) {
+  return <button type={type} data-slot="button" className={cn(buttonVariants({ variant, size }), className)} {...props} />;
+}
